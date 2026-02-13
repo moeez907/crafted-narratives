@@ -32,6 +32,8 @@ interface StoreContextType {
   coupon: CouponCode | null;
   applyCoupon: (coupon: CouponCode) => void;
   removeCoupon: () => void;
+  clerkSelectedIds: string[];
+  setClerkSelectedIds: (ids: string[]) => void;
 }
 
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
@@ -43,6 +45,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [filterCategory, setFilterCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [coupon, setCoupon] = useState<CouponCode | null>(null);
+  const [clerkSelectedIds, setClerkSelectedIds] = useState<string[]>([]);
 
   const addToCart = useCallback((product: Product, color: string, size: string) => {
     setCart(prev => {
@@ -89,6 +92,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         cartTotal, cartCount, isCartOpen, setIsCartOpen,
         sortBy, setSortBy, filterCategory, setFilterCategory,
         searchQuery, setSearchQuery, coupon, applyCoupon, removeCoupon,
+        clerkSelectedIds, setClerkSelectedIds,
       }}
     >
       {children}
