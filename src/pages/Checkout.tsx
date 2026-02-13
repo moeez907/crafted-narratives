@@ -52,6 +52,30 @@ const Checkout = () => {
     setIsSubmitting(false);
 
     if (!error) {
+      // Trigger n8n webhook
+      try {
+        await fetch("https://abdulmoeez7.app.n8n.cloud/webhook/0e95befa-36c6-4d7c-a36d-c565cef41c33", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          mode: "no-cors",
+          body: JSON.stringify({
+            customer_name: `${form.firstName} ${form.lastName}`.trim(),
+            customer_email: form.email,
+            customer_phone: form.phone,
+            customer_address: `${form.address}, ${form.city} ${form.zip}`.trim(),
+            items,
+            subtotal: cartTotal,
+            discount_percent: coupon?.discount || 0,
+            coupon_code: coupon?.code || null,
+            total: discountedTotal,
+            status: "pending",
+            ordered_at: new Date().toISOString(),
+          }),
+        });
+      } catch (webhookErr) {
+        console.warn("n8n webhook failed:", webhookErr);
+      }
+
       setOrderPlaced(true);
       clearCart();
     } else {
