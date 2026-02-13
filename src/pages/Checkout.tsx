@@ -1,12 +1,79 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { useStore } from "@/context/StoreContext";
+import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import CartDrawer from "@/components/CartDrawer";
 import AIClerk from "@/components/AIClerk";
+import { CheckCircle, Loader2 } from "lucide-react";
 
 const Checkout = () => {
-  const { cart, cartTotal, coupon } = useStore();
+  const { cart, cartTotal, coupon, clearCart } = useStore();
+  const navigate = useNavigate();
   const discountedTotal = coupon ? cartTotal * (1 - coupon.discount / 100) : cartTotal;
+
+  const [form, setForm] = useState({
+    firstName: "", lastName: "", email: "", phone: "", address: "", city: "", zip: "",
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orderPlaced, setOrderPlaced] = useState(false);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
+  const handlePlaceOrder = async () => {
+    if (!form.firstName || !form.email || !form.address || !form.phone) return;
+    setIsSubmitting(true);
+
+    const items = cart.map(item => ({
+      productId: item.product.id,
+      name: item.product.name,
+      price: item.product.price,
+      color: item.selectedColor,
+      size: item.selectedSize,
+      quantity: item.quantity,
+    }));
+
+    const { error } = await supabase.from("orders").insert({
+      customer_name: `${form.firstName} ${form.lastName}`.trim(),
+      customer_email: form.email,
+      customer_phone: form.phone,
+      customer_address: `${form.address}, ${form.city} ${form.zip}`.trim(),
+      items,
+      subtotal: cartTotal,
+      discount_percent: coupon?.discount || 0,
+      coupon_code: coupon?.code || null,
+      total: discountedTotal,
+      status: "pending",
+    });
+
+    setIsSubmitting(false);
+
+    if (!error) {
+      setOrderPlaced(true);
+      clearCart();
+    } else {
+      console.error("Order error:", error);
+    }
+  };
+
+  if (orderPlaced) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="pt-32 flex flex-col items-center justify-center text-center px-4">
+          <CheckCircle size={64} className="text-primary mb-4" />
+          <h1 className="font-display text-3xl font-bold mb-2">Order Placed!</h1>
+          <p className="text-muted-foreground mb-6">Thank you for your purchase. You'll receive a confirmation at your email.</p>
+          <button onClick={() => navigate("/")} className="px-6 py-3 bg-gold-gradient text-primary-foreground rounded font-semibold text-sm uppercase tracking-wider hover:opacity-90 transition-opacity">
+            Continue Shopping
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -28,25 +95,15 @@ const Checkout = () => {
           <div className="grid md:grid-cols-5 gap-8">
             <div className="md:col-span-3 space-y-6">
               <div className="bg-card rounded-xl p-6 border border-border">
-                <h2 className="font-display text-lg font-semibold mb-4">Shipping Details</h2>
+                <h2 className="font-display text-lg font-semibold mb-4">Your Details</h2>
                 <div className="grid grid-cols-2 gap-4">
-                  <input placeholder="First Name" className="col-span-1 px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                  <input placeholder="Last Name" className="col-span-1 px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                  <input placeholder="Email" className="col-span-2 px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                  <input placeholder="Address" className="col-span-2 px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                  <input placeholder="City" className="px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                  <input placeholder="Zip Code" className="px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                </div>
-              </div>
-
-              <div className="bg-card rounded-xl p-6 border border-border">
-                <h2 className="font-display text-lg font-semibold mb-4">Payment</h2>
-                <div className="space-y-4">
-                  <input placeholder="Card Number" className="w-full px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                  <div className="grid grid-cols-2 gap-4">
-                    <input placeholder="MM/YY" className="px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                    <input placeholder="CVC" className="px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
-                  </div>
+                  <input name="firstName" value={form.firstName} onChange={handleChange} placeholder="First Name *" className="col-span-1 px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
+                  <input name="lastName" value={form.lastName} onChange={handleChange} placeholder="Last Name" className="col-span-1 px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
+                  <input name="email" value={form.email} onChange={handleChange} placeholder="Email *" className="col-span-2 px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
+                  <input name="phone" value={form.phone} onChange={handleChange} placeholder="Phone *" className="col-span-2 px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
+                  <input name="address" value={form.address} onChange={handleChange} placeholder="Address *" className="col-span-2 px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
+                  <input name="city" value={form.city} onChange={handleChange} placeholder="City" className="px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
+                  <input name="zip" value={form.zip} onChange={handleChange} placeholder="Zip Code" className="px-4 py-3 rounded bg-input border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:border-primary" />
                 </div>
               </div>
             </div>
@@ -82,8 +139,12 @@ const Checkout = () => {
                     <span className="text-primary">${discountedTotal.toFixed(2)}</span>
                   </div>
                 </div>
-                <button className="w-full mt-6 py-4 bg-gold-gradient text-primary-foreground text-sm font-semibold uppercase tracking-wider rounded hover:opacity-90 transition-opacity">
-                  Place Order
+                <button
+                  onClick={handlePlaceOrder}
+                  disabled={isSubmitting || !form.firstName || !form.email || !form.address || !form.phone}
+                  className="w-full mt-6 py-4 bg-gold-gradient text-primary-foreground text-sm font-semibold uppercase tracking-wider rounded hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? <><Loader2 size={16} className="animate-spin" /> Placing Order...</> : "Place Order"}
                 </button>
               </div>
             </div>
