@@ -14,13 +14,124 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      products: {
+        Row: {
+          bottom_price: number
+          category: string
+          color_images: Json | null
+          colors: string[] | null
+          created_at: string | null
+          description: string | null
+          embedding: string | null
+          id: string
+          image: string | null
+          in_stock: boolean | null
+          name: string
+          price: number
+          rating: number | null
+          reviews: number | null
+          sizes: string[] | null
+          stock_count: number | null
+          tags: string[] | null
+        }
+        Insert: {
+          bottom_price: number
+          category: string
+          color_images?: Json | null
+          colors?: string[] | null
+          created_at?: string | null
+          description?: string | null
+          embedding?: string | null
+          id: string
+          image?: string | null
+          in_stock?: boolean | null
+          name: string
+          price: number
+          rating?: number | null
+          reviews?: number | null
+          sizes?: string[] | null
+          stock_count?: number | null
+          tags?: string[] | null
+        }
+        Update: {
+          bottom_price?: number
+          category?: string
+          color_images?: Json | null
+          colors?: string[] | null
+          created_at?: string | null
+          description?: string | null
+          embedding?: string | null
+          id?: string
+          image?: string | null
+          in_stock?: boolean | null
+          name?: string
+          price?: number
+          rating?: number | null
+          reviews?: number | null
+          sizes?: string[] | null
+          stock_count?: number | null
+          tags?: string[] | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      match_products: {
+        Args: {
+          match_count?: number
+          match_threshold?: number
+          query_embedding: string
+        }
+        Returns: {
+          bottom_price: number
+          category: string
+          color_images: Json
+          colors: string[]
+          description: string
+          id: string
+          image: string
+          in_stock: boolean
+          name: string
+          price: number
+          rating: number
+          reviews: number
+          similarity: number
+          sizes: string[]
+          stock_count: number
+          tags: string[]
+        }[]
+      }
+      search_products_by_text: {
+        Args: { match_count?: number; search_query: string }
+        Returns: {
+          bottom_price: number
+          category: string
+          color_images: Json | null
+          colors: string[] | null
+          created_at: string | null
+          description: string | null
+          embedding: string | null
+          id: string
+          image: string | null
+          in_stock: boolean | null
+          name: string
+          price: number
+          rating: number | null
+          reviews: number | null
+          sizes: string[] | null
+          stock_count: number | null
+          tags: string[] | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "products"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
     }
     Enums: {
       [_ in never]: never
