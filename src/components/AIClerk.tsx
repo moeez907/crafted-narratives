@@ -1,0 +1,310 @@
+import { useState, useRef, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { MessageCircle, X, Send, Loader2, Star, ShoppingBag } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import { useStore } from "@/context/StoreContext";
+import { products } from "@/data/products";
+import { Link } from "react-router-dom";
+
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+}
+
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/clerk-chat`;
+
+const AIClerk = () => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      role: "assistant",
+      content:
+        "Welcome to **LUXE BOUTIQUE**! 👋 I'm your personal Clerk. I can help you find the perfect outfit, check sizes, and even negotiate a special deal. What are you looking for today?",
+    },
+  ]);
+  const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { addToCart, setSortBy, setFilterCategory, setSearchQuery, applyCoupon } = useStore();
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    const handler = () => setIsOpen(true);
+    window.addEventListener("open-clerk", handler);
+    return () => window.removeEventListener("open-clerk", handler);
+  }, []);
+
+  const processActions = useCallback(
+    (text: string) => {
+      // Process ADD_TO_CART
+      const cartMatch = text.match(/---ADD_TO_CART---\s*(\{[^}]+\})\s*---END_ACTION---/g);
+      if (cartMatch) {
+        cartMatch.forEach((m) => {
+          const json = m.match(/\{[^}]+\}/);
+          if (json) {
+            try {
+              const data = JSON.parse(json[0]);
+              const product = products.find((p) => p.id === data.productId);
+              if (product) {
+                addToCart(product, data.color || product.colors[0], data.size || product.sizes[0]);
+              }
+            } catch {}
+          }
+        });
+      }
+
+      // Process UI_ACTION
+      const uiMatch = text.match(/---UI_ACTION---\s*(\{[^}]+\})\s*---END_ACTION---/g);
+      if (uiMatch) {
+        uiMatch.forEach((m) => {
+          const json = m.match(/\{[^}]+\}/);
+          if (json) {
+            try {
+              const data = JSON.parse(json[0]);
+              if (data.type === "sort") setSortBy(data.value);
+              if (data.type === "filter") setFilterCategory(data.value);
+              if (data.type === "search") setSearchQuery(data.value);
+            } catch {}
+          }
+        });
+      }
+
+      // Process COUPON
+      const couponMatch = text.match(/---COUPON---\s*(\{[^}]+\})\s*---END_COUPON---/g);
+      if (couponMatch) {
+        couponMatch.forEach((m) => {
+          const json = m.match(/\{[^}]+\}/);
+          if (json) {
+            try {
+              const data = JSON.parse(json[0]);
+              applyCoupon({ code: data.code, discount: data.discount });
+            } catch {}
+          }
+        });
+      }
+    },
+    [addToCart, setSortBy, setFilterCategory, setSearchQuery, applyCoupon]
+  );
+
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading) return;
+    const userMsg: Message = { role: "user", content: input.trim() };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput("");
+    setIsLoading(true);
+
+    let assistantSoFar = "";
+
+    try {
+      const resp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ messages: newMessages }),
+      });
+
+      if (!resp.ok || !resp.body) {
+        throw new Error("Stream failed");
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let textBuffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        textBuffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") break;
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              assistantSoFar += content;
+              setMessages((prev) => {
+                const last = prev[prev.length - 1];
+                if (last?.role === "assistant" && prev.length > newMessages.length) {
+                  return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
+                }
+                return [...prev, { role: "assistant", content: assistantSoFar }];
+              });
+            }
+          } catch {
+            textBuffer = line + "\n" + textBuffer;
+            break;
+          }
+        }
+      }
+
+      processActions(assistantSoFar);
+    } catch (e) {
+      console.error(e);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Sorry, I'm having trouble connecting. Please try again!" },
+      ]);
+    }
+    setIsLoading(false);
+  };
+
+  const renderContent = (content: string) => {
+    // Remove action blocks from display
+    const cleaned = content
+      .replace(/---ADD_TO_CART---[\s\S]*?---END_ACTION---/g, "✅ *Added to cart!*")
+      .replace(/---UI_ACTION---[\s\S]*?---END_ACTION---/g, "✨ *Updated the store display!*")
+      .replace(/---COUPON---[\s\S]*?---END_COUPON---/g, "");
+
+    // Extract product cards
+    const parts = cleaned.split(/---PRODUCT_CARD---|---END_CARD---/);
+
+    return parts.map((part, i) => {
+      if (i % 2 === 1) {
+        // Product card JSON
+        try {
+          const p = JSON.parse(part.trim());
+          return (
+            <Link
+              key={i}
+              to={`/product/${p.id}`}
+              onClick={() => setIsOpen(false)}
+              className="block my-2 p-3 rounded-lg bg-secondary/50 border border-border hover:border-primary transition-colors"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-sm">{p.name}</p>
+                  <div className="flex items-center gap-1 mt-1">
+                    <Star size={10} className="fill-primary text-primary" />
+                    <span className="text-xs text-muted-foreground">
+                      {p.rating} ({p.reviews})
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-primary text-sm">${p.price}</p>
+                  <ShoppingBag size={12} className="text-muted-foreground ml-auto mt-1" />
+                </div>
+              </div>
+            </Link>
+          );
+        } catch {
+          return <span key={i}>{part}</span>;
+        }
+      }
+      return (
+        <div key={i} className="prose prose-sm prose-invert max-w-none [&>p]:mb-2 [&>ul]:mb-2 [&>ol]:mb-2">
+          <ReactMarkdown>{part}</ReactMarkdown>
+        </div>
+      );
+    });
+  };
+
+  return (
+    <>
+      {/* FAB */}
+      <AnimatePresence>
+        {!isOpen && (
+          <motion.button
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            exit={{ scale: 0 }}
+            whileHover={{ scale: 1.1 }}
+            onClick={() => setIsOpen(true)}
+            className="fixed bottom-6 right-6 z-40 w-14 h-14 bg-gold-gradient rounded-full flex items-center justify-center shadow-gold animate-pulse-gold"
+          >
+            <MessageCircle size={24} className="text-primary-foreground" />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* Chat Window */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-4 right-4 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[550px] max-h-[calc(100vh-2rem)] bg-card border border-border rounded-2xl flex flex-col shadow-2xl overflow-hidden"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 bg-gold-gradient">
+              <div>
+                <h3 className="font-display text-sm font-bold text-primary-foreground">The Clerk</h3>
+                <p className="text-xs text-primary-foreground/70">Your AI Personal Shopper</p>
+              </div>
+              <button onClick={() => setIsOpen(false)} className="text-primary-foreground/70 hover:text-primary-foreground">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {messages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
+                      msg.role === "user"
+                        ? "bg-primary text-primary-foreground rounded-br-md"
+                        : "bg-secondary text-secondary-foreground rounded-bl-md"
+                    }`}
+                  >
+                    {msg.role === "assistant" ? renderContent(msg.content) : msg.content}
+                  </div>
+                </div>
+              ))}
+              {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
+                <div className="flex justify-start">
+                  <div className="bg-secondary rounded-2xl rounded-bl-md px-4 py-3">
+                    <Loader2 size={16} className="animate-spin text-muted-foreground" />
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input */}
+            <div className="p-3 border-t border-border">
+              <div className="flex items-center gap-2">
+                <input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                  placeholder="Ask me anything..."
+                  className="flex-1 px-4 py-2.5 text-sm bg-input rounded-full text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={sendMessage}
+                  disabled={!input.trim() || isLoading}
+                  className="w-10 h-10 bg-gold-gradient rounded-full flex items-center justify-center disabled:opacity-50"
+                >
+                  <Send size={16} className="text-primary-foreground" />
+                </motion.button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+};
+
+export default AIClerk;
