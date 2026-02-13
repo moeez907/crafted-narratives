@@ -109,12 +109,37 @@ serve(async (req) => {
       console.log(`RAG: Combined search returned ${retrievedProducts.length} products`);
     }
 
+    // Step 2.5: Category-based fallback — guarantee category products are included
+    const categoryKeywords = ["trousers", "shoes", "bags", "watches", "shirts", "suits", "blazers", "dresses", "knitwear", "outerwear", "accessories"];
+    const userWords = lastUserMessage.toLowerCase().split(/\s+/);
+    const matchedCategory = categoryKeywords.find(cat => userWords.some(w => w.includes(cat) || cat.includes(w)));
+
+    if (matchedCategory) {
+      const categoryInResults = retrievedProducts.filter((p: any) =>
+        p.category?.toLowerCase().includes(matchedCategory)
+      ).length;
+
+      if (categoryInResults < 3) {
+        const { data: categoryProducts } = await supabase.rpc("search_products_by_text", {
+          search_query: matchedCategory,
+          match_count: 20,
+        });
+        if (categoryProducts) {
+          retrievedProducts.push(...categoryProducts);
+          retrievedProducts = Array.from(
+            new Map(retrievedProducts.map((p: any) => [p.id, p])).values()
+          );
+          console.log(`RAG: Category fallback for "${matchedCategory}" added, total: ${retrievedProducts.length}`);
+        }
+      }
+    }
+
     // Step 3: Always fetch ALL products as full catalog context
     // The clerk should ALWAYS have visibility into the entire inventory
     const { data: allProducts } = await supabase
       .from("products")
       .select("id, name, description, price, bottom_price, category, tags, colors, sizes, rating, reviews, in_stock, stock_count")
-      .limit(100);
+      .limit(250);
 
     const fullCatalog = allProducts || [];
 
@@ -206,6 +231,8 @@ OR for search:
 ---UI_ACTION---
 {"type": "search", "value": "summer"}
 ---END_ACTION---
+
+**CRITICAL for UI_ACTION search**: When the user asks for a specific category (trousers, shoes, watches, bags, shirts, suits, blazers, dresses, knitwear, outerwear, accessories), the "value" in the search UI_ACTION MUST be the exact category name with proper capitalization (e.g., "Trousers", "Shoes", "Watches"). This ensures the homepage grid filters correctly.
 
 Tell them you're updating the store display.
 
