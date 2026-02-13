@@ -27,7 +27,7 @@ const AIClerk = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<Array<{ id: string; name: string; price: number; colors: string; sizes: string }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { addToCart, setSortBy, setFilterCategory, setSearchQuery, applyCoupon } = useStore();
+  const { addToCart, setSortBy, setFilterCategory, setSearchQuery, applyCoupon, setClerkSelectedIds } = useStore();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -255,10 +255,14 @@ const AIClerk = () => {
                 const availableColors = product?.colors?.join(", ") || "N/A";
                 const availableSizes = product?.sizes?.join(", ") || "N/A";
                 setSelectedProducts(prev => {
+                  let next;
                   if (prev.some(sp => sp.id === p.id)) {
-                    return prev.filter(sp => sp.id !== p.id);
+                    next = prev.filter(sp => sp.id !== p.id);
+                  } else {
+                    next = [...prev, { id: p.id, name: p.name, price: p.price, colors: availableColors, sizes: availableSizes }];
                   }
-                  return [...prev, { id: p.id, name: p.name, price: p.price, colors: availableColors, sizes: availableSizes }];
+                  setClerkSelectedIds(next.map(sp => sp.id));
+                  return next;
                 });
               }}
               className={`block w-full text-left my-2 p-3 rounded-lg border transition-colors cursor-pointer ${
@@ -375,8 +379,10 @@ const AIClerk = () => {
                   </span>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setSelectedProducts([])}
-                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      onClick={() => {
+                        setSelectedProducts([]);
+                        setClerkSelectedIds([]);
+                      }}
                     >
                       Clear
                     </button>
@@ -387,6 +393,7 @@ const AIClerk = () => {
                           .join(", ");
                         const msg = `I want to order these ${selectedProducts.length} products: ${productList}. Please ask me to pick my preferred color, size, and quantity for EACH product one by one, then proceed with the order.`;
                         setSelectedProducts([]);
+                        setClerkSelectedIds([]);
                         sendMessage(msg);
                       }}
                       disabled={isLoading}

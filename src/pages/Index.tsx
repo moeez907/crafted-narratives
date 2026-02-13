@@ -9,21 +9,26 @@ import ProductCard from "@/components/ProductCard";
 import AIClerk from "@/components/AIClerk";
 
 const Index = () => {
-  const { sortBy, setSortBy, filterCategory, setFilterCategory, searchQuery } = useStore();
+  const { sortBy, setSortBy, filterCategory, setFilterCategory, searchQuery, clerkSelectedIds } = useStore();
 
   const filteredProducts = useMemo(() => {
     let filtered = [...products];
 
-    if (searchQuery) {
-      const words = searchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 1);
-      filtered = filtered.filter((p) => {
-        const searchable = `${p.name} ${p.description} ${p.tags.join(" ")} ${p.category}`.toLowerCase();
-        return words.every(word => searchable.includes(word));
-      });
-    }
+    // If clerk has selected products, show only those
+    if (clerkSelectedIds.length > 0) {
+      filtered = filtered.filter((p) => clerkSelectedIds.includes(p.id));
+    } else {
+      if (searchQuery) {
+        const words = searchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+        filtered = filtered.filter((p) => {
+          const searchable = `${p.name} ${p.description} ${p.tags.join(" ")} ${p.category}`.toLowerCase();
+          return words.every(word => searchable.includes(word));
+        });
+      }
 
-    if (filterCategory !== "All") {
-      filtered = filtered.filter((p) => p.category === filterCategory);
+      if (filterCategory !== "All") {
+        filtered = filtered.filter((p) => p.category === filterCategory);
+      }
     }
 
     switch (sortBy) {
@@ -42,7 +47,7 @@ const Index = () => {
     }
 
     return filtered;
-  }, [sortBy, filterCategory, searchQuery]);
+  }, [sortBy, filterCategory, searchQuery, clerkSelectedIds]);
 
   return (
     <div className="min-h-screen bg-background">
