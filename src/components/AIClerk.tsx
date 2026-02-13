@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, X, Send, Loader2, Star, ShoppingBag, CheckCircle } from "lucide-react";
+import { MessageCircle, X, Send, Loader2, Star, ShoppingBag, CheckCircle, Check } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useStore } from "@/context/StoreContext";
 import { products } from "@/data/products";
@@ -25,6 +25,7 @@ const AIClerk = () => {
   ]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedProducts, setSelectedProducts] = useState<Array<{ id: string; name: string; price: number; colors: string; sizes: string }>>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { addToCart, setSortBy, setFilterCategory, setSearchQuery, applyCoupon } = useStore();
 
@@ -245,11 +246,26 @@ const AIClerk = () => {
           const product = products.find(prod => prod.id === p.id);
           const availableColors = product?.colors?.join(", ") || "N/A";
           const availableSizes = product?.sizes?.join(", ") || "N/A";
+          const isSelected = selectedProducts.some(sp => sp.id === p.id);
           return (
             <button
               key={i}
-              onClick={() => sendMessage(`I want to order "${p.name}" (Product ID: ${p.id}, Price: $${p.price}). Available colors: ${availableColors}. Available sizes: ${availableSizes}. Please ask me to pick my preferred color, size, and quantity first, then proceed with the order.`)}
-              className="block w-full text-left my-2 p-3 rounded-lg bg-secondary/50 border border-border hover:border-primary transition-colors cursor-pointer"
+              onClick={() => {
+                const product = products.find(prod => prod.id === p.id);
+                const availableColors = product?.colors?.join(", ") || "N/A";
+                const availableSizes = product?.sizes?.join(", ") || "N/A";
+                setSelectedProducts(prev => {
+                  if (prev.some(sp => sp.id === p.id)) {
+                    return prev.filter(sp => sp.id !== p.id);
+                  }
+                  return [...prev, { id: p.id, name: p.name, price: p.price, colors: availableColors, sizes: availableSizes }];
+                });
+              }}
+              className={`block w-full text-left my-2 p-3 rounded-lg border transition-colors cursor-pointer ${
+                isSelected
+                  ? "bg-primary/10 border-primary ring-1 ring-primary"
+                  : "bg-secondary/50 border-border hover:border-primary"
+              }`}
             >
               <div className="flex items-center justify-between">
                 <div>
@@ -261,9 +277,16 @@ const AIClerk = () => {
                     </span>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold text-primary text-sm">${p.price}</p>
-                  <ShoppingBag size={12} className="text-muted-foreground ml-auto mt-1" />
+                <div className="text-right flex items-center gap-2">
+                  <div>
+                    <p className="font-bold text-primary text-sm">${p.price}</p>
+                    <ShoppingBag size={12} className="text-muted-foreground ml-auto mt-1" />
+                  </div>
+                  {isSelected && (
+                    <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                      <Check size={12} className="text-primary-foreground" />
+                    </div>
+                  )}
                 </div>
               </div>
             </button>
@@ -342,6 +365,39 @@ const AIClerk = () => {
               )}
               <div ref={messagesEndRef} />
             </div>
+
+            {/* Selected Products Bar */}
+            {selectedProducts.length > 0 && (
+              <div className="px-3 pt-2 pb-1 border-t border-border">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">
+                    {selectedProducts.length} product{selectedProducts.length > 1 ? "s" : ""} selected
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSelectedProducts([])}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={() => {
+                        const productList = selectedProducts
+                          .map(sp => `"${sp.name}" (ID: ${sp.id}, Price: $${sp.price}, Colors: ${sp.colors}, Sizes: ${sp.sizes})`)
+                          .join(", ");
+                        const msg = `I want to order these ${selectedProducts.length} products: ${productList}. Please ask me to pick my preferred color, size, and quantity for EACH product one by one, then proceed with the order.`;
+                        setSelectedProducts([]);
+                        sendMessage(msg);
+                      }}
+                      disabled={isLoading}
+                      className="px-3 py-1.5 text-xs font-semibold bg-gold-gradient text-primary-foreground rounded-full hover:opacity-90 transition-opacity disabled:opacity-50"
+                    >
+                      Order {selectedProducts.length} item{selectedProducts.length > 1 ? "s" : ""} →
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Input */}
             <div className="p-3 border-t border-border">
