@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      orders: {
+        Row: {
+          coupon_code: string | null
+          created_at: string
+          customer_address: string
+          customer_email: string
+          customer_name: string
+          customer_phone: string
+          discount_percent: number
+          id: string
+          items: Json
+          status: string
+          subtotal: number
+          total: number
+        }
+        Insert: {
+          coupon_code?: string | null
+          created_at?: string
+          customer_address: string
+          customer_email: string
+          customer_name: string
+          customer_phone: string
+          discount_percent?: number
+          id?: string
+          items?: Json
+          status?: string
+          subtotal?: number
+          total?: number
+        }
+        Update: {
+          coupon_code?: string | null
+          created_at?: string
+          customer_address?: string
+          customer_email?: string
+          customer_name?: string
+          customer_phone?: string
+          discount_percent?: number
+          id?: string
+          items?: Json
+          status?: string
+          subtotal?: number
+          total?: number
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           bottom_price: number

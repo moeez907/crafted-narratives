@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, X, Send, Loader2, Star, ShoppingBag } from "lucide-react";
+import { MessageCircle, X, Send, Loader2, Star, ShoppingBag, CheckCircle } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useStore } from "@/context/StoreContext";
 import { products } from "@/data/products";
+import { supabase } from "@/integrations/supabase/client";
 import { Link } from "react-router-dom";
 
 interface Message {
@@ -82,6 +83,42 @@ const AIClerk = () => {
               const data = JSON.parse(json[0]);
               applyCoupon({ code: data.code, discount: data.discount });
             } catch {}
+          }
+        });
+      }
+
+      // Process PLACE_ORDER
+      const orderMatch = text.match(/---PLACE_ORDER---\s*([\s\S]*?)\s*---END_ORDER---/g);
+      if (orderMatch) {
+        orderMatch.forEach(async (m) => {
+          const jsonStr = m.replace(/---PLACE_ORDER---/, "").replace(/---END_ORDER---/, "").trim();
+          try {
+            const data = JSON.parse(jsonStr);
+            const items = data.items || [];
+            const subtotal = items.reduce((sum: number, item: any) => sum + (item.price * (item.quantity || 1)), 0);
+            const discountPercent = data.coupon?.discount || 0;
+            const total = subtotal * (1 - discountPercent / 100);
+
+            const { error } = await supabase.from("orders").insert({
+              customer_name: data.customer.name,
+              customer_email: data.customer.email,
+              customer_phone: data.customer.phone,
+              customer_address: data.customer.address,
+              items: items,
+              subtotal,
+              discount_percent: discountPercent,
+              coupon_code: data.coupon?.code || null,
+              total,
+              status: "pending",
+            });
+
+            if (error) {
+              console.error("Order insert error:", error);
+            } else {
+              console.log("Order placed successfully!");
+            }
+          } catch (e) {
+            console.error("Order parse error:", e);
           }
         });
       }
@@ -170,7 +207,8 @@ const AIClerk = () => {
     const cleaned = content
       .replace(/---ADD_TO_CART---[\s\S]*?---END_ACTION---/g, "✅ *Added to cart!*")
       .replace(/---UI_ACTION---[\s\S]*?---END_ACTION---/g, "✨ *Updated the store display!*")
-      .replace(/---COUPON---[\s\S]*?---END_COUPON---/g, "");
+      .replace(/---COUPON---[\s\S]*?---END_COUPON---/g, "")
+      .replace(/---PLACE_ORDER---[\s\S]*?---END_ORDER---/g, "✅ **Order placed successfully!** 🎉 You'll receive a confirmation at your email shortly.");
 
     // Extract product cards
     const parts = cleaned.split(/---PRODUCT_CARD---|---END_CARD---/);
