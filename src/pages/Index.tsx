@@ -15,14 +15,11 @@ const Index = () => {
     let filtered = [...products];
 
     if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      filtered = filtered.filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.description.toLowerCase().includes(q) ||
-          p.tags.some((t) => t.toLowerCase().includes(q)) ||
-          p.category.toLowerCase().includes(q)
-      );
+      const words = searchQuery.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+      filtered = filtered.filter((p) => {
+        const searchable = `${p.name} ${p.description} ${p.tags.join(" ")} ${p.category}`.toLowerCase();
+        return words.every(word => searchable.includes(word));
+      });
     }
 
     if (filterCategory !== "All") {
