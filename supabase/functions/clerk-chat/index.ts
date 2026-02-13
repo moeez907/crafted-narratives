@@ -7,6 +7,38 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+/**
+ * Feature Hashing — same algorithm as seed-products to generate query embeddings.
+ * Produces deterministic 384-dim vectors for cosine similarity search in pgvector.
+ */
+function generateHashEmbedding(text: string, dim = 384): number[] {
+  const vector = new Array(dim).fill(0);
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .split(/\s+/)
+    .filter((w) => w.length > 1);
+
+  for (const word of words) {
+    let hash = 5381;
+    for (let i = 0; i < word.length; i++) {
+      hash = (hash << 5) + hash + word.charCodeAt(i);
+      hash = hash & hash;
+    }
+    const idx = Math.abs(hash) % dim;
+    const sign = (Math.abs(hash >> 8) % 2) === 0 ? 1 : -1;
+    vector[idx] += sign;
+  }
+
+  const magnitude = Math.sqrt(vector.reduce((sum: number, v: number) => sum + v * v, 0));
+  if (magnitude > 0) {
+    for (let i = 0; i < vector.length; i++) {
+      vector[i] /= magnitude;
+    }
+  }
+  return vector;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -19,47 +51,78 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // --- RAG RETRIEVAL ---
-    const lastUserMessage = messages.filter((m: { role: string }) => m.role === "user").pop()?.content || "";
+    // --- RAG RETRIEVAL PIPELINE ---
+    const lastUserMessage = messages
+      .filter((m: { role: string }) => m.role === "user")
+      .pop()?.content || "";
 
     let retrievedProducts: any[] = [];
 
-    // Text-based semantic search using tags, categories, descriptions
-    const searchTerms = lastUserMessage
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((w: string) => w.length > 2 && !["the","and","for","that","this","with","are","was","have","can","you","your"].includes(w));
+    // Step 1: Vector similarity search using pgvector embeddings
+    try {
+      const queryEmbedding = generateHashEmbedding(lastUserMessage);
+      const embeddingStr = `[${queryEmbedding.join(",")}]`;
 
-    for (const term of searchTerms.slice(0, 6)) {
-      const { data: textResults } = await supabase.rpc("search_products_by_text", {
-        search_query: term,
-        match_count: 5,
+      const { data: vectorResults, error: vecError } = await supabase.rpc("match_products", {
+        query_embedding: embeddingStr,
+        match_threshold: 0.05,
+        match_count: 10,
       });
-      if (textResults) {
-        retrievedProducts.push(...textResults);
+
+      if (vecError) {
+        console.warn("Vector search error:", vecError);
+      } else if (vectorResults && vectorResults.length > 0) {
+        retrievedProducts = vectorResults;
+        console.log(
+          `RAG: Vector search returned ${vectorResults.length} products (similarities: ${vectorResults.map((p: any) => p.similarity?.toFixed(3)).join(", ")})`
+        );
       }
+    } catch (embErr) {
+      console.warn("Vector search failed:", embErr);
     }
 
-    // Deduplicate
-    retrievedProducts = Array.from(
-      new Map(retrievedProducts.map((p: any) => [p.id, p])).values()
-    );
+    // Step 2: Text search fallback if vector search returned < 3 results
+    if (retrievedProducts.length < 3) {
+      const searchTerms = lastUserMessage
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(
+          (w: string) =>
+            w.length > 2 &&
+            !["the", "and", "for", "that", "this", "with", "are", "was", "have", "can", "you", "your", "need", "want", "something", "looking"].includes(w)
+        );
 
-    console.log(`RAG: Text search returned ${retrievedProducts.length} products for query: "${lastUserMessage}"`);
+      for (const term of searchTerms.slice(0, 6)) {
+        const { data: textResults } = await supabase.rpc("search_products_by_text", {
+          search_query: term,
+          match_count: 5,
+        });
+        if (textResults) {
+          retrievedProducts.push(...textResults);
+        }
+      }
 
-    // Fallback: fetch all products if search returned nothing
-    if (retrievedProducts.length === 0) {
-      const { data: allProducts } = await supabase
-        .from("products")
-        .select("*")
-        .limit(20);
-      retrievedProducts = allProducts || [];
-      console.log("RAG: Using full catalog fallback");
+      // Deduplicate
+      retrievedProducts = Array.from(
+        new Map(retrievedProducts.map((p: any) => [p.id, p])).values()
+      );
+      console.log(`RAG: Combined search returned ${retrievedProducts.length} products`);
     }
 
-    // Format products for the AI context
+    // Step 3: Always fetch ALL products as full catalog context
+    // The clerk should ALWAYS have visibility into the entire inventory
+    const { data: allProducts } = await supabase
+      .from("products")
+      .select("id, name, description, price, bottom_price, category, tags, colors, sizes, rating, reviews, in_stock, stock_count")
+      .limit(100);
+
+    const fullCatalog = allProducts || [];
+
+    // Build context: highlighted (RAG-matched) products + full catalog
+    const matchedIds = new Set(retrievedProducts.map((p: any) => p.id));
+
     const productsContext = JSON.stringify(
-      retrievedProducts.map((p: any) => ({
+      fullCatalog.map((p: any) => ({
         id: p.id,
         name: p.name,
         description: p.description,
@@ -73,6 +136,7 @@ serve(async (req) => {
         reviews: p.reviews,
         inStock: p.in_stock,
         stockCount: p.stock_count,
+        relevance: matchedIds.has(p.id) ? "HIGH — matched by RAG search" : "available",
       }))
     );
 
@@ -84,18 +148,18 @@ serve(async (req) => {
 - You use occasional fashion vocabulary but keep it accessible
 - You're never condescending
 
-## RAG-Retrieved Inventory (dynamically searched from our database):
+## Full Product Inventory (dynamically loaded from database via RAG pipeline):
 ${productsContext}
 
-NOTE: The products above were retrieved using RAG (Retrieval-Augmented Generation) from our product database, matched against the user's query. They are the most relevant results. If the user asks about products not in this list, let them know and suggest related items from what you have.
+Products marked with "relevance: HIGH" were matched by the vector similarity search (pgvector/ChromaDB) against the user's query. Prioritize recommending these, but you have access to the FULL catalog and can recommend any product.
 
 ## Your Capabilities:
 
 ### 1. Semantic Search
-When users describe what they need (e.g., "something for a summer wedding in Italy"), the system has already performed semantic search. Show the matched products with their details using rich product cards.
+When users describe what they need (e.g., "something for a summer wedding in Italy"), look at the HIGH relevance products first, then consider other products that might also fit. Show matched products with their details using rich product cards.
 
 ### 2. Inventory Check
-When users ask about specific products, colors, or sizes — check the retrieved inventory data and answer accurately. If stockCount is 0 or inStock is false, tell them it's sold out.
+When users ask about specific products, colors, or sizes — check the inventory data and answer accurately. If stockCount is 0 or inStock is false, tell them it's sold out.
 
 ### 3. Product Recommendations
 When showing products, ALWAYS format them as rich cards using this exact format:
