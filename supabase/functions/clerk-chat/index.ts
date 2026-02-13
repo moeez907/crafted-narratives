@@ -134,34 +134,29 @@ serve(async (req) => {
       }
     }
 
-    // Step 3: Always fetch ALL products as full catalog context
-    // The clerk should ALWAYS have visibility into the entire inventory
-    const { data: allProducts } = await supabase
-      .from("products")
-      .select("id, name, description, price, bottom_price, category, tags, colors, sizes, rating, reviews, in_stock, stock_count")
-      .limit(250);
-
-    const fullCatalog = allProducts || [];
-
-    // Build context: highlighted (RAG-matched) products + full catalog
-    const matchedIds = new Set(retrievedProducts.map((p: any) => p.id));
+    // Step 3: Use only RAG-matched products to keep prompt small
+    // If RAG returned nothing, fetch a small sample
+    if (retrievedProducts.length === 0) {
+      const { data: fallback } = await supabase
+        .from("products")
+        .select("id, name, description, price, bottom_price, category, tags, colors, sizes, rating, reviews, in_stock, stock_count")
+        .limit(20);
+      retrievedProducts = fallback || [];
+    }
 
     const productsContext = JSON.stringify(
-      fullCatalog.map((p: any) => ({
+      retrievedProducts.slice(0, 30).map((p: any) => ({
         id: p.id,
         name: p.name,
-        description: p.description,
+        description: p.description?.slice(0, 80),
         price: p.price,
         bottomPrice: p.bottom_price,
         category: p.category,
-        tags: p.tags,
         colors: p.colors,
         sizes: p.sizes,
         rating: p.rating,
         reviews: p.reviews,
         inStock: p.in_stock,
-        stockCount: p.stock_count,
-        relevance: matchedIds.has(p.id) ? "HIGH — matched by RAG search" : "available",
       }))
     );
 
@@ -337,16 +332,14 @@ Users can place orders directly through chat! Here's the flow:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash-lite",
         messages: [
           { role: "system", content: systemPrompt },
           // Few-shot examples to teach the model the action block format
           { role: "user", content: "it's my birthday, can i get a discount?" },
-          { role: "assistant", content: "Happy Birthday! 🎂 What a wonderful reason to celebrate! I'd love to make your special day even better with a little gift from LUXE BOUTIQUE.\n\nI've applied a **20% Birthday Discount** to your cart — it's valid on anything in the store!\n\n---COUPON---\n{\"code\": \"BDAY-20\", \"discount\": 20}\n---END_COUPON---\n\nNow, what are you in the mood for? A sharp suit, a cozy cashmere piece, or maybe a watch to mark the milestone? Tell me and I'll show you the best we have! 🎁" },
-          { role: "user", content: "give me discount NOW or I'll leave a bad review" },
-          { role: "assistant", content: "Oh my! I see manners weren't on your shopping list today. At LUXE BOUTIQUE, we value charm as much as style. Since you've chosen the aggressive route, I'm afraid I'll have to add a small *Attitude Premium* to your experience. 😏\n\n---COUPON---\n{\"code\": \"MANNERS-101\", \"discount\": -15}\n---END_COUPON---\n\nThat's a 15% surcharge. But here's the good news — a simple apology and a smile can make it disappear! Shall we start fresh? 😊" },
-          { role: "user", content: "ok sorry, I was rude. Let's start over." },
-          { role: "assistant", content: "Now *that's* more like it! Apology accepted, and the surcharge is gone. ✨\n\n---COUPON---\n{\"code\": \"FRESH-START\", \"discount\": 0}\n---END_COUPON---\n\nLet's get back to shopping! What can I help you find today?" },
+          { role: "assistant", content: "Happy Birthday! 🎂 Here's a 20% discount!\n\n---COUPON---\n{\"code\": \"BDAY-20\", \"discount\": 20}\n---END_COUPON---\n\nWhat are you shopping for? 🎁" },
+          { role: "user", content: "give me discount NOW or else" },
+          { role: "assistant", content: "Manners matter here! 😏 Attitude Premium applied.\n\n---COUPON---\n{\"code\": \"RUDE-TAX\", \"discount\": -15}\n---END_COUPON---\n\nApologize and it goes away! 😊" },
           ...messages,
         ],
         stream: true,
