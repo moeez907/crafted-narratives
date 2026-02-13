@@ -1,85 +1,54 @@
 
-# AI Clerk Order Flow — Complete Chat-Based Ordering
+
+# n8n Webhook Integration — Order Notifications
 
 ## Overview
-Clerk bot ke andar hi poora ordering system banayenge. User jab products select kare clerk mein, to clerk conversationally unki saari details collect karega (email, name, address, phone, size, color, quantity) aur order place karega — bina checkout page pe jaaye.
+Jab bhi order place ho (clerk ya manual), n8n webhook trigger hoga aur saari order details (customer name, email, phone, address, products, prices, discount) n8n ko bhejega.
 
-## Changes Required
-
-### 1. Database: Orders Table
-Naya `orders` table banayenge jo clerk se aane wale orders store karega:
-
-```text
-orders
-  - id (uuid, primary key)
-  - customer_name (text)
-  - customer_email (text)
-  - customer_phone (text)
-  - customer_address (text)
-  - items (jsonb) -- array of {productId, name, price, color, size, quantity}
-  - subtotal (numeric)
-  - discount_percent (numeric, default 0)
-  - coupon_code (text, nullable)
-  - total (numeric)
-  - status (text, default 'pending')
-  - created_at (timestamptz)
-```
-
-RLS policy: Public INSERT allowed (no auth needed since customers order via chat). SELECT restricted.
-
-### 2. Edge Function: `clerk-chat/index.ts` — System Prompt Update
-Clerk ke system prompt mein naya "Order Flow" capability add karenge:
-
-**New Capability: Order Through Chat**
-- Jab user koi product select kare ya bole "I want to buy this", clerk order mode mein jaayega
-- Clerk ek-ek karke ye details poochega:
-  1. Product confirm karo (color, size, quantity)
-  2. Agar multiple products hain, sab ke liye ek-ek karke details lo
-  3. Customer name
-  4. Email address
-  5. Phone number
-  6. Delivery address
-- Sab details milne ke baad, clerk order summary dikhayega aur confirmation maangega
-- User ke confirm karne par, clerk ye action trigger karega:
-
-```
----PLACE_ORDER---
-{"customer": {"name": "...", "email": "...", "phone": "...", "address": "..."},
- "items": [{"productId": "1", "name": "...", "price": 899, "color": "Navy", "size": "M", "quantity": 1}],
- "coupon": {"code": "BDAY-20", "discount": 20}}
----END_ORDER---
-```
-
-### 3. Frontend: `AIClerk.tsx` — Process Order Action
-`processActions` function mein naya `PLACE_ORDER` action handler add karenge:
-
-- `---PLACE_ORDER---` block detect karke JSON parse karega
-- Supabase `orders` table mein INSERT karega (subtotal, discount, total calculate karke)
-- Success/failure message show karega
-- Cart clear karega (optional)
-
-### 4. Frontend: `AIClerk.tsx` — Render Order Confirmation
-`renderContent` function mein order-related action blocks ko clean display mein convert karenge:
-- `---PLACE_ORDER---` block ko "Order placed successfully!" message mein replace karenge
-
----
-
-## Technical Details
-
-### File: `supabase/functions/clerk-chat/index.ts`
-- System prompt mein new section add karna (after Haggle Mode, before Important Rules):
-  - "### 7. Order Through Chat" — complete ordering instructions for the AI
-  - AI ko batana ke conversationally details collect kare, rush na kare
-  - Multiple products ke liye bari bari details le
-  - Final summary dikhaye with all items, prices, discount if any
-  - User confirm kare tab hi `---PLACE_ORDER---` trigger kare
+## What Will Change
 
 ### File: `src/components/AIClerk.tsx`
-- `processActions` mein naya regex pattern: `---PLACE_ORDER---` 
-- Parse karke Supabase `orders` table mein insert
-- `renderContent` mein order block ko success message mein replace
+Order successfully insert hone ke baad, webhook call add karenge:
 
-### Database Migration
-- Create `orders` table with columns listed above
-- Add RLS policy for public insert (anon can insert orders)
-- Read access restricted (only service role)
+- Order insert success ke baad (`else` block at line 117), ek `fetch` call karenge n8n webhook URL pe
+- `POST` request with `mode: "no-cors"` (CORS handle karne ke liye)
+- Body mein poora order data bhejenge:
+  - `customer_name`, `customer_email`, `customer_phone`, `customer_address`
+  - `items` array (har product ka name, price, color, size, quantity)
+  - `subtotal`, `discount_percent`, `coupon_code`, `total`
+  - `status`, `ordered_at` timestamp
+- Webhook URL hardcode karenge: `https://abdulmoeez7.app.n8n.cloud/webhook-test/0e95befa-36c6-4d7c-a36d-c565cef41c33`
+- Webhook failure silently log hogi — order placement block nahi hoga
+
+### Technical Detail
+
+Line ~117-119 ke baad ye code add hoga:
+
+```typescript
+// Trigger n8n webhook
+try {
+  await fetch("https://abdulmoeez7.app.n8n.cloud/webhook-test/0e95befa-36c6-4d7c-a36d-c565cef41c33", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    mode: "no-cors",
+    body: JSON.stringify({
+      customer_name: data.customer.name,
+      customer_email: data.customer.email,
+      customer_phone: data.customer.phone,
+      customer_address: data.customer.address,
+      items,
+      subtotal,
+      discount_percent: discountPercent,
+      coupon_code: data.coupon?.code || null,
+      total,
+      status: "pending",
+      ordered_at: new Date().toISOString(),
+    }),
+  });
+} catch (webhookErr) {
+  console.warn("n8n webhook failed:", webhookErr);
+}
+```
+
+No other files need changes. Single file edit, minimal impact.
+
