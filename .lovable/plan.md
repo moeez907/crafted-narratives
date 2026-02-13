@@ -1,51 +1,44 @@
 
 
-## Comprehensive Product Image Mismatch Fix
+# Fix: AI Clerk Trousers Not Showing + Full Catalog Access
 
-### Problem
-Product images across the store are mismatched with their titles. The root cause is a small pool of Unsplash photo IDs being reused across unrelated products. This is most severe in the Shoes category but affects others too.
+## Problem Identified
 
-### Confirmed Mismatches (Shoes Category - Visual Audit)
+Database mein 19 trousers hain aur sab ki embeddings bhi hain (207 products, 207 embeddings). Lekin AI Clerk trousers nahi dikha raha kyunke:
 
-| Product | Issue |
-|---------|-------|
-| **Monk Strap Shoes** (id 301) | Shows a colorful knit/running shoe under neon lights -- should show buckled monk strap dress shoes |
-| **Patent Leather Evening Shoes** (id 306) | Shows colorful floral HIGH HEELS -- should show men's black patent leather formal shoes |
-| **Suede Driving Moccasins** (id 305) | Image shows driving gloves/leather boots -- should show soft suede loafer-style moccasins |
-| **Velvet Slippers** (id 310) | Shows a generic shoe/sneaker -- should show velvet embroidered slippers |
-| **Leather Sandals** (id 311) | Shows Birkenstock-style sandals (same image as Espadrille Sandals) -- should show Greek-style leather sandals |
-| **Espadrille Sandals** (id 308) | Shows Birkenstock sandals -- should show jute-soled espadrilles |
-| **Riding Boots** (id 313) | Reuses the Hiking Boots image -- should show tall equestrian riding boots |
-| **Tassel Loafers** (id 314) | Image appears broken/not loading |
-| **Leather High-Top Sneakers** (id 316) | Shows pastel Nike sneakers -- should show premium leather high-tops |
-| **Woven Leather Loafers** (id 318) | Shows driving-style shoes -- should show intrecciato woven leather |
-| **Derby Brogue Shoes** (id 304) | Reuses same image as Leather Oxford -- should show distinct brogue pattern |
-| **Leather Oxford Shoes** (id 3) | Shows monk strap buckled shoes -- should show laced oxfords |
+1. **Catalog limit 100 hai** — Line 117 mein `.limit(100)` hai lekin DB mein 207 products hain. Trousers (IDs 9, 901-918) cut ho sakte hain.
+2. **Vector search kaam kar raha hai** lekin djb2 hash embeddings simple queries ke liye low similarity scores dete hain — kuch products threshold se neeche aa sakte hain.
 
-### Cross-Category Issues
-Many categories share the same Unsplash IDs for color variants, causing visual duplication. For example, `photo-1604671801908-6f0c6a092c05` appears in multiple shoe products for different color variants but shows a single type of shoe.
+## Plan
 
-### Approach
+### Step 1: Increase catalog limit to 250
+`supabase/functions/clerk-chat/index.ts` line 117 mein `.limit(100)` ko `.limit(250)` karna hai taake saare 207 products clerk ko dikhen.
 
-1. Replace all mismatched main images in `shoes.ts` with verified, category-accurate Unsplash photo IDs
-2. Replace mismatched colorImages variants with unique, accurate images per color
-3. Spot-check and fix any cross-category reuse issues in other files
-4. Clear the database (`DELETE FROM products`) so the auto-seed repopulates with corrected data
-5. Visual verification across all categories after re-seed
+### Step 2: Add category-based fallback search
+Vector search ke baad, agar user ne koi specific category maangi (jaise "trousers") aur vector results mein us category ke products kam hain, to ek additional category-based query run karein:
+```
+SELECT * FROM products WHERE category ILIKE '%trousers%'
+```
+Isse guarantee hoga ke category ke saare products milein.
+
+### Step 3: UI_ACTION search value improvement  
+System prompt mein clarify karna ke jab user specific category maange (jaise trousers), to `UI_ACTION` ka search value exact category name ho (e.g., `"Trousers"`) taake homepage grid bhi sahi filter ho.
+
+### Step 4: Deploy and test
+Edge function deploy karke "I want trousers" query test karna.
+
+---
 
 ### Technical Details
 
-**Files to modify:**
-- `src/data/products/shoes.ts` -- Primary target: replace ~12 product main images and ~30+ color variant images with verified, product-accurate Unsplash URLs
+**File: `supabase/functions/clerk-chat/index.ts`**
 
-**Verified replacement strategy:**
-Each product will get unique Unsplash images that accurately depict:
-- The correct shoe type (oxford vs monk strap vs brogue, etc.)
-- Appropriate style (men's formal vs women's heels, etc.)
-- Distinct images per color variant where possible
+1. Line 117: `.limit(100)` -> `.limit(250)`
 
-**Database action:**
-- Execute `DELETE FROM products;` to clear current data and trigger auto-seed with corrected images
+2. Lines 84-110 ke baad: Add category fallback logic:
+   - Extract category keywords from user message
+   - If vector results have fewer than 3 items from that category, run a direct `WHERE category ILIKE` query
+   - Merge and deduplicate results
 
-**Scope:** Focused on the Shoes category first (most severe mismatches), with a follow-up visual audit on other categories after deployment.
+3. System prompt update: Add instruction that for category-specific queries, the `UI_ACTION` search value should be the exact category name (e.g., "Trousers", "Shoes", "Watches").
 
