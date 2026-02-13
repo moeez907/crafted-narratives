@@ -1,44 +1,85 @@
 
+# AI Clerk Order Flow — Complete Chat-Based Ordering
 
-# Fix: AI Clerk Trousers Not Showing + Full Catalog Access
+## Overview
+Clerk bot ke andar hi poora ordering system banayenge. User jab products select kare clerk mein, to clerk conversationally unki saari details collect karega (email, name, address, phone, size, color, quantity) aur order place karega — bina checkout page pe jaaye.
 
-## Problem Identified
+## Changes Required
 
-Database mein 19 trousers hain aur sab ki embeddings bhi hain (207 products, 207 embeddings). Lekin AI Clerk trousers nahi dikha raha kyunke:
+### 1. Database: Orders Table
+Naya `orders` table banayenge jo clerk se aane wale orders store karega:
 
-1. **Catalog limit 100 hai** — Line 117 mein `.limit(100)` hai lekin DB mein 207 products hain. Trousers (IDs 9, 901-918) cut ho sakte hain.
-2. **Vector search kaam kar raha hai** lekin djb2 hash embeddings simple queries ke liye low similarity scores dete hain — kuch products threshold se neeche aa sakte hain.
-
-## Plan
-
-### Step 1: Increase catalog limit to 250
-`supabase/functions/clerk-chat/index.ts` line 117 mein `.limit(100)` ko `.limit(250)` karna hai taake saare 207 products clerk ko dikhen.
-
-### Step 2: Add category-based fallback search
-Vector search ke baad, agar user ne koi specific category maangi (jaise "trousers") aur vector results mein us category ke products kam hain, to ek additional category-based query run karein:
+```text
+orders
+  - id (uuid, primary key)
+  - customer_name (text)
+  - customer_email (text)
+  - customer_phone (text)
+  - customer_address (text)
+  - items (jsonb) -- array of {productId, name, price, color, size, quantity}
+  - subtotal (numeric)
+  - discount_percent (numeric, default 0)
+  - coupon_code (text, nullable)
+  - total (numeric)
+  - status (text, default 'pending')
+  - created_at (timestamptz)
 ```
-SELECT * FROM products WHERE category ILIKE '%trousers%'
+
+RLS policy: Public INSERT allowed (no auth needed since customers order via chat). SELECT restricted.
+
+### 2. Edge Function: `clerk-chat/index.ts` — System Prompt Update
+Clerk ke system prompt mein naya "Order Flow" capability add karenge:
+
+**New Capability: Order Through Chat**
+- Jab user koi product select kare ya bole "I want to buy this", clerk order mode mein jaayega
+- Clerk ek-ek karke ye details poochega:
+  1. Product confirm karo (color, size, quantity)
+  2. Agar multiple products hain, sab ke liye ek-ek karke details lo
+  3. Customer name
+  4. Email address
+  5. Phone number
+  6. Delivery address
+- Sab details milne ke baad, clerk order summary dikhayega aur confirmation maangega
+- User ke confirm karne par, clerk ye action trigger karega:
+
 ```
-Isse guarantee hoga ke category ke saare products milein.
+---PLACE_ORDER---
+{"customer": {"name": "...", "email": "...", "phone": "...", "address": "..."},
+ "items": [{"productId": "1", "name": "...", "price": 899, "color": "Navy", "size": "M", "quantity": 1}],
+ "coupon": {"code": "BDAY-20", "discount": 20}}
+---END_ORDER---
+```
 
-### Step 3: UI_ACTION search value improvement  
-System prompt mein clarify karna ke jab user specific category maange (jaise trousers), to `UI_ACTION` ka search value exact category name ho (e.g., `"Trousers"`) taake homepage grid bhi sahi filter ho.
+### 3. Frontend: `AIClerk.tsx` — Process Order Action
+`processActions` function mein naya `PLACE_ORDER` action handler add karenge:
 
-### Step 4: Deploy and test
-Edge function deploy karke "I want trousers" query test karna.
+- `---PLACE_ORDER---` block detect karke JSON parse karega
+- Supabase `orders` table mein INSERT karega (subtotal, discount, total calculate karke)
+- Success/failure message show karega
+- Cart clear karega (optional)
+
+### 4. Frontend: `AIClerk.tsx` — Render Order Confirmation
+`renderContent` function mein order-related action blocks ko clean display mein convert karenge:
+- `---PLACE_ORDER---` block ko "Order placed successfully!" message mein replace karenge
 
 ---
 
-### Technical Details
+## Technical Details
 
-**File: `supabase/functions/clerk-chat/index.ts`**
+### File: `supabase/functions/clerk-chat/index.ts`
+- System prompt mein new section add karna (after Haggle Mode, before Important Rules):
+  - "### 7. Order Through Chat" — complete ordering instructions for the AI
+  - AI ko batana ke conversationally details collect kare, rush na kare
+  - Multiple products ke liye bari bari details le
+  - Final summary dikhaye with all items, prices, discount if any
+  - User confirm kare tab hi `---PLACE_ORDER---` trigger kare
 
-1. Line 117: `.limit(100)` -> `.limit(250)`
+### File: `src/components/AIClerk.tsx`
+- `processActions` mein naya regex pattern: `---PLACE_ORDER---` 
+- Parse karke Supabase `orders` table mein insert
+- `renderContent` mein order block ko success message mein replace
 
-2. Lines 84-110 ke baad: Add category fallback logic:
-   - Extract category keywords from user message
-   - If vector results have fewer than 3 items from that category, run a direct `WHERE category ILIKE` query
-   - Merge and deduplicate results
-
-3. System prompt update: Add instruction that for category-specific queries, the `UI_ACTION` search value should be the exact category name (e.g., "Trousers", "Shoes", "Watches").
-
+### Database Migration
+- Create `orders` table with columns listed above
+- Add RLS policy for public insert (anon can insert orders)
+- Read access restricted (only service role)
