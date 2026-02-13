@@ -219,10 +219,13 @@ const AIClerk = () => {
         // Product card JSON
         try {
           const p = JSON.parse(part.trim());
+          const product = products.find(prod => prod.id === p.id);
+          const availableColors = product?.colors?.join(", ") || "N/A";
+          const availableSizes = product?.sizes?.join(", ") || "N/A";
           return (
             <button
               key={i}
-              onClick={() => sendMessage(`I want to order "${p.name}" (Product ID: ${p.id}, Price: $${p.price}). Please help me place this order.`)}
+              onClick={() => sendMessage(`I want to order "${p.name}" (Product ID: ${p.id}, Price: $${p.price}). Available colors: ${availableColors}. Available sizes: ${availableSizes}. Please ask me to pick my preferred color, size, and quantity first, then proceed with the order.`)}
               className="block w-full text-left my-2 p-3 rounded-lg bg-secondary/50 border border-border hover:border-primary transition-colors cursor-pointer"
             >
               <div className="flex items-center justify-between">
