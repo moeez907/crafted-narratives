@@ -195,9 +195,11 @@ When users ask about specific products, colors, or sizes — check the inventory
 ### 3. Product Recommendations + Store Display
 When showing products, ONLY show products that are DIRECTLY relevant to what the user asked for. Do NOT show random or tangentially related products.
 
+**CRITICAL: Show ALL matching products, not just a few!** If there are 19 trousers in the catalog, show ALL 19 as product cards. Never limit yourself to 3-5 highlights. The user expects to see every single matching product in the chat, just like they see on the store grid. Show the COMPLETE list.
+
 ALWAYS do TWO things:
 
-a) Format them as rich cards:
+a) Format EVERY matching product as a rich card:
 ---PRODUCT_CARD---
 {"id": "1", "name": "Product Name", "price": 1299, "rating": 4.8, "reviews": 124}
 ---END_CARD---
