@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import { useStore } from "@/context/StoreContext";
 import { products } from "@/data/products";
 import { supabase } from "@/integrations/supabase/client";
-import { Link } from "react-router-dom";
+
 
 interface Message {
   role: "user" | "assistant";
@@ -126,12 +126,13 @@ const AIClerk = () => {
     [addToCart, setSortBy, setFilterCategory, setSearchQuery, applyCoupon]
   );
 
-  const sendMessage = async () => {
-    if (!input.trim() || isLoading) return;
-    const userMsg: Message = { role: "user", content: input.trim() };
+  const sendMessage = async (overrideInput?: string) => {
+    const text = overrideInput ?? input.trim();
+    if (!text || isLoading) return;
+    const userMsg: Message = { role: "user", content: text };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
-    setInput("");
+    if (!overrideInput) setInput("");
     setIsLoading(true);
 
     let assistantSoFar = "";
@@ -219,11 +220,10 @@ const AIClerk = () => {
         try {
           const p = JSON.parse(part.trim());
           return (
-            <Link
+            <button
               key={i}
-              to={`/product/${p.id}`}
-              onClick={() => setIsOpen(false)}
-              className="block my-2 p-3 rounded-lg bg-secondary/50 border border-border hover:border-primary transition-colors"
+              onClick={() => sendMessage(`I want to order "${p.name}" (Product ID: ${p.id}, Price: $${p.price}). Please help me place this order.`)}
+              className="block w-full text-left my-2 p-3 rounded-lg bg-secondary/50 border border-border hover:border-primary transition-colors cursor-pointer"
             >
               <div className="flex items-center justify-between">
                 <div>
@@ -240,7 +240,7 @@ const AIClerk = () => {
                   <ShoppingBag size={12} className="text-muted-foreground ml-auto mt-1" />
                 </div>
               </div>
-            </Link>
+            </button>
           );
         } catch {
           return <span key={i}>{part}</span>;
@@ -330,7 +330,7 @@ const AIClerk = () => {
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={sendMessage}
+                  onClick={() => sendMessage()}
                   disabled={!input.trim() || isLoading}
                   className="w-10 h-10 bg-gold-gradient rounded-full flex items-center justify-center disabled:opacity-50"
                 >
