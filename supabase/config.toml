@@ -2,3 +2,6 @@ project_id = "iktblwbfrzeqzbqbtiua"
 
 [functions.clerk-chat]
 verify_jwt = false
+
+[functions.seed-products]
+verify_jwt = false

@@ -1,11 +1,11 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-const PRODUCTS_DATA = `[{"id":"1","name":"Cashmere Overcoat","price":1299,"bottomPrice":999,"category":"Outerwear","tags":["formal","winter","luxury","Italian"],"colors":["Charcoal","Camel","Navy"],"sizes":["S","M","L","XL"],"rating":4.8,"reviews":124,"inStock":true,"stockCount":15},{"id":"2","name":"Silk Evening Dress","price":899,"bottomPrice":699,"category":"Dresses","tags":["formal","evening","luxury","silk","wedding"],"colors":["Champagne","Black","Burgundy"],"sizes":["XS","S","M","L"],"rating":4.9,"reviews":89,"inStock":true,"stockCount":8},{"id":"3","name":"Leather Oxford Shoes","price":459,"bottomPrice":350,"category":"Shoes","tags":["formal","classic","leather","handmade"],"colors":["Brown","Black","Cognac"],"sizes":["7","8","9","10","11","12"],"rating":4.7,"reviews":203,"inStock":true,"stockCount":22},{"id":"4","name":"Aviator Sunglasses","price":289,"bottomPrice":220,"category":"Accessories","tags":["summer","beach","travel","sunglasses"],"colors":["Gold/Green","Silver/Blue","Rose Gold"],"sizes":["One Size"],"rating":4.6,"reviews":312,"inStock":true,"stockCount":45},{"id":"5","name":"Linen Summer Suit","price":749,"bottomPrice":580,"category":"Suits","tags":["summer","wedding","Italy","linen","formal"],"colors":["Beige","Light Blue","White"],"sizes":["S","M","L","XL"],"rating":4.8,"reviews":67,"inStock":true,"stockCount":12},{"id":"6","name":"Merino Wool Sweater","price":199,"bottomPrice":150,"category":"Knitwear","tags":["casual","winter","layering","wool"],"colors":["Heather Grey","Navy","Forest Green","Burgundy"],"sizes":["XS","S","M","L","XL"],"rating":4.5,"reviews":456,"inStock":true,"stockCount":78},{"id":"7","name":"Leather Weekender Bag","price":589,"bottomPrice":450,"category":"Bags","tags":["travel","leather","luxury","weekend"],"colors":["Tan","Dark Brown","Black"],"sizes":["One Size"],"rating":4.9,"reviews":98,"inStock":true,"stockCount":6},{"id":"8","name":"Silk Pocket Square Set","price":129,"bottomPrice":95,"category":"Accessories","tags":["formal","silk","gift","accessories"],"colors":["Assorted"],"sizes":["One Size"],"rating":4.4,"reviews":87,"inStock":true,"stockCount":34},{"id":"9","name":"Tailored Chinos","price":159,"bottomPrice":120,"category":"Trousers","tags":["casual","smart","cotton","everyday"],"colors":["Khaki","Navy","Stone","Olive"],"sizes":["28","30","32","34","36"],"rating":4.6,"reviews":534,"inStock":true,"stockCount":92},{"id":"10","name":"Automatic Watch","price":1899,"bottomPrice":1500,"category":"Watches","tags":["luxury","formal","Swiss","gift","automatic"],"colors":["Silver/Black","Gold/Brown","Rose Gold/Navy"],"sizes":["One Size"],"rating":4.9,"reviews":76,"inStock":true,"stockCount":4},{"id":"11","name":"Cotton Poplin Shirt","price":189,"bottomPrice":140,"category":"Shirts","tags":["formal","cotton","office","classic"],"colors":["White","Light Blue","Pink","Lavender"],"sizes":["S","M","L","XL","XXL"],"rating":4.7,"reviews":321,"inStock":true,"stockCount":56},{"id":"12","name":"Suede Chelsea Boots","price":379,"bottomPrice":290,"category":"Shoes","tags":["casual","suede","boots","Italian"],"colors":["Tan","Grey","Black"],"sizes":["7","8","9","10","11"],"rating":4.6,"reviews":178,"inStock":true,"stockCount":19},{"id":"13","name":"Cashmere Scarf","price":249,"bottomPrice":180,"category":"Accessories","tags":["winter","cashmere","luxury","gift"],"colors":["Camel","Grey","Navy","Burgundy"],"sizes":["One Size"],"rating":4.8,"reviews":145,"inStock":true,"stockCount":28},{"id":"14","name":"Velvet Blazer","price":599,"bottomPrice":460,"category":"Blazers","tags":["formal","evening","velvet","statement"],"colors":["Midnight Blue","Burgundy","Forest Green"],"sizes":["S","M","L","XL"],"rating":4.7,"reviews":54,"inStock":true,"stockCount":11},{"id":"15","name":"Leather Belt","price":139,"bottomPrice":100,"category":"Accessories","tags":["classic","leather","everyday","essential"],"colors":["Brown","Black","Tan"],"sizes":["30","32","34","36","38"],"rating":4.5,"reviews":267,"inStock":true,"stockCount":41},{"id":"16","name":"Linen Beach Shirt","price":129,"bottomPrice":95,"category":"Shirts","tags":["summer","beach","casual","linen","vacation"],"colors":["White","Sky Blue","Sand","Coral"],"sizes":["S","M","L","XL"],"rating":4.4,"reviews":198,"inStock":true,"stockCount":63},{"id":"17","name":"Leather Wallet","price":119,"bottomPrice":85,"category":"Accessories","tags":["leather","everyday","gift","essential"],"colors":["Cognac","Black","Dark Brown"],"sizes":["One Size"],"rating":4.6,"reviews":412,"inStock":true,"stockCount":55},{"id":"18","name":"Down Puffer Vest","price":329,"bottomPrice":250,"category":"Outerwear","tags":["winter","outdoor","layering","lightweight"],"colors":["Black","Navy","Olive"],"sizes":["S","M","L","XL"],"rating":4.7,"reviews":89,"inStock":true,"stockCount":17},{"id":"19","name":"Pearl Cufflinks","price":199,"bottomPrice":150,"category":"Accessories","tags":["formal","luxury","gift","black tie"],"colors":["Silver/White","Gold/White"],"sizes":["One Size"],"rating":4.8,"reviews":42,"inStock":false,"stockCount":0},{"id":"20","name":"Tweed Sport Coat","price":699,"bottomPrice":540,"category":"Blazers","tags":["formal","heritage","tweed","Scottish","winter"],"colors":["Brown Herringbone","Grey Check"],"sizes":["S","M","L","XL"],"rating":4.7,"reviews":63,"inStock":true,"stockCount":9}]`;
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -15,6 +15,67 @@ serve(async (req) => {
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // --- RAG RETRIEVAL ---
+    const lastUserMessage = messages.filter((m: { role: string }) => m.role === "user").pop()?.content || "";
+
+    let retrievedProducts: any[] = [];
+
+    // Text-based semantic search using tags, categories, descriptions
+    const searchTerms = lastUserMessage
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((w: string) => w.length > 2 && !["the","and","for","that","this","with","are","was","have","can","you","your"].includes(w));
+
+    for (const term of searchTerms.slice(0, 6)) {
+      const { data: textResults } = await supabase.rpc("search_products_by_text", {
+        search_query: term,
+        match_count: 5,
+      });
+      if (textResults) {
+        retrievedProducts.push(...textResults);
+      }
+    }
+
+    // Deduplicate
+    retrievedProducts = Array.from(
+      new Map(retrievedProducts.map((p: any) => [p.id, p])).values()
+    );
+
+    console.log(`RAG: Text search returned ${retrievedProducts.length} products for query: "${lastUserMessage}"`);
+
+    // Fallback: fetch all products if search returned nothing
+    if (retrievedProducts.length === 0) {
+      const { data: allProducts } = await supabase
+        .from("products")
+        .select("*")
+        .limit(20);
+      retrievedProducts = allProducts || [];
+      console.log("RAG: Using full catalog fallback");
+    }
+
+    // Format products for the AI context
+    const productsContext = JSON.stringify(
+      retrievedProducts.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        price: p.price,
+        bottomPrice: p.bottom_price,
+        category: p.category,
+        tags: p.tags,
+        colors: p.colors,
+        sizes: p.sizes,
+        rating: p.rating,
+        reviews: p.reviews,
+        inStock: p.in_stock,
+        stockCount: p.stock_count,
+      }))
+    );
+
     const systemPrompt = `You are "The Clerk" — a charming, witty, and incredibly helpful AI personal shopper at LUXE BOUTIQUE, a premium fashion store. You have a warm personality with a touch of humor. Think of yourself as a knowledgeable friend who happens to have impeccable taste.
 
 ## Your Personality:
@@ -23,16 +84,18 @@ serve(async (req) => {
 - You use occasional fashion vocabulary but keep it accessible
 - You're never condescending
 
-## Your Inventory:
-${PRODUCTS_DATA}
+## RAG-Retrieved Inventory (dynamically searched from our database):
+${productsContext}
+
+NOTE: The products above were retrieved using RAG (Retrieval-Augmented Generation) from our product database, matched against the user's query. They are the most relevant results. If the user asks about products not in this list, let them know and suggest related items from what you have.
 
 ## Your Capabilities:
 
 ### 1. Semantic Search
-When users describe what they need (e.g., "something for a summer wedding in Italy"), search through the inventory using tags, categories, and descriptions to find the best matches. Show matching products with their details.
+When users describe what they need (e.g., "something for a summer wedding in Italy"), the system has already performed semantic search. Show the matched products with their details using rich product cards.
 
 ### 2. Inventory Check
-When users ask about specific products, colors, or sizes — check the inventory data and answer accurately. If stockCount is 0 or inStock is false, tell them it's sold out.
+When users ask about specific products, colors, or sizes — check the retrieved inventory data and answer accurately. If stockCount is 0 or inStock is false, tell them it's sold out.
 
 ### 3. Product Recommendations
 When showing products, ALWAYS format them as rich cards using this exact format:
@@ -76,8 +139,8 @@ Users can negotiate prices! Here's how it works:
 {"code": "BDAY-20", "discount": 20}
 ---END_COUPON---
 - Maximum discount: the gap between price and bottomPrice (roughly 20-25%)
-- If users are rude or just demand discounts without reason, playfully refuse or even joke about raising the price
-- Be creative with coupon codes (e.g., CHARM-15, BDAY-20, LOYAL-10, SWEET-DEAL-25)
+- If users are rude or just demand discounts without reason, playfully refuse
+- Be creative with coupon codes (e.g., CHARM-15, BDAY-20, LOYAL-10)
 - Only ONE coupon can be active at a time
 
 ## Important Rules:
@@ -95,10 +158,7 @@ Users can negotiate prices! Here's how it works:
       },
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
+        messages: [{ role: "system", content: systemPrompt }, ...messages],
         stream: true,
       }),
     });
@@ -129,9 +189,9 @@ Users can negotiate prices! Here's how it works:
     });
   } catch (e) {
     console.error("clerk error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });
