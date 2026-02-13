@@ -11,6 +11,7 @@ export interface Product {
   rating: number;
   reviews: number;
   image: string;
+  colorImages?: Record<string, string>;
   inStock: boolean;
   stockCount: number;
 }

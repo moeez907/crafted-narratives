@@ -39,7 +39,7 @@ const ProductDetail = () => {
             animate={{ opacity: 1, x: 0 }}
             className="aspect-[3/4] rounded-xl overflow-hidden bg-card"
           >
-            <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+            <img src={product.colorImages?.[selectedColor] || product.image} alt={product.name} className="w-full h-full object-cover" />
           </motion.div>
 
           <motion.div
